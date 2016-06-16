@@ -1,7 +1,14 @@
+#include <ESP8266WiFi.h>
 #include <RTClib.h>
 #include <DHT.h>
 #include <Wire.h>
 RTC_DS1307 RTC;
+
+String writeAPIKey = "YOUR_API_KEY";
+#define SSID "YOUR_SSID"
+#define PASSWORD "YOUR_PASSWORD"
+#define iotServer "184.106.153.149"
+WiFiClient client;
 
 //setting pin constants
 
@@ -16,7 +23,7 @@ RTC_DS1307 RTC;
 //define polling interval in seconds (NOT MILLISECONDS!), choose a reasonable value so that you are
 //checking sensors at a useful rate, but not overpolling and drawing too much power for no good reason
 
-#define runInterval 5
+#define runInterval 300
 
 //setting up DHT22
 
@@ -58,6 +65,13 @@ void setup() {
     RTC.adjust(DateTime(__DATE__, __TIME__));
   }
 
+  //initialize WiFi
+  WiFi.begin(SSID, PASSWORD);
+  delay(10000);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
 }
 
 void loop() {
@@ -91,6 +105,9 @@ void loop() {
     //send data over serial
     serial_send(); 
 
+    //send data to ThingSpeak
+    thing_speak();
+
     lastRun = now.unixtime();
   }
 
@@ -117,7 +134,7 @@ int light_level(){
   //but don't forget, you must dimension variables as floats, otherwise they will default to doubles
   //afterward, cast to int to truncate the decimal
   DateTime now = RTC.now();
-  float a = -4.0;
+  float a = -5.2;
   float x = now.hour() + (now.minute() / 60.0);
   float h = 12.0;
   float k = 255.0;
@@ -130,6 +147,33 @@ int light_level(){
     lightLevel = 0;
   }
   return lightLevel;
+}
+
+void thing_speak() {
+
+  if (client.connect(iotServer,80)) {
+    Serial.println("Established connection to ThingSpeak");
+
+    String channelData = "/update?key="; 
+    channelData += writeAPIKey;
+    channelData +="&field1=";
+    channelData += String(temperature);
+    channelData +="&field2=";
+    channelData += String(humidity);
+    channelData +="&field3=";
+    channelData += String(dryness);
+    channelData +="&field4=";
+    channelData += String(waterLevel);
+    channelData +="&field5=";
+    channelData += String(light_level());
+    channelData +="&field6=";
+    channelData += String(pump_state());
+
+//post to thingspeak
+ client.print(String("GET ") + channelData + " HTTP/1.1\r\n" + "Host: " + iotServer + "\r\n" +  "Connection: close\r\n\r\n");
+
+  }
+  client.stop();
 }
 
 void serial_send() {
@@ -178,4 +222,3 @@ void serial_send() {
     
     Serial.println(" ");
 }
-
